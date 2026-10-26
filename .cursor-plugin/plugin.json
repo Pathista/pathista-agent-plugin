@@ -1,0 +1,13 @@
+{
+  "name": "pathista",
+  "description": "Run your saved workflows step by step: the agent gets one step at a time and closes each checklist item with evidence.",
+  "version": "1.0.0",
+  "author": {
+    "name": "CleverSpark"
+  },
+  "homepage": "https://pathista.com/?utm_source=github&utm_medium=plugin&utm_campaign=plugin-repo",
+  "repository": "https://github.com/cleverspark/pathista-agent-plugin",
+  "license": "MIT",
+  "keywords": ["workflow", "checklist", "mcp", "process", "release", "agents"],
+  "logo": "assets/logo.png"
+}

@@ -1,0 +1,15 @@
+{
+  "name": "pathista",
+  "description": "Pathista for Claude Code: saved workflows your agent runs one step at a time.",
+  "owner": {
+    "name": "CleverSpark",
+    "url": "https://pathista.com"
+  },
+  "plugins": [
+    {
+      "name": "pathista",
+      "source": "./",
+      "description": "Run your saved workflows step by step: the agent gets one step at a time and closes each checklist item with evidence."
+    }
+  ]
+}

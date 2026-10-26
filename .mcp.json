@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pathista": {
+      "type": "http",
+      "url": "https://pathista.com/mcp"
+    }
+  }
+}
