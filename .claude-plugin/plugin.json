@@ -8,12 +8,12 @@
     "url": "https://pathista.com"
   },
   "homepage": "https://pathista.com/?utm_source=github&utm_medium=plugin&utm_campaign=plugin-repo",
-  "repository": "https://github.com/cleverspark/pathista-agent-plugin",
+  "repository": "https://github.com/Pathista/pathista-agent-plugin",
   "license": "MIT",
   "keywords": ["workflow", "checklist", "mcp", "process", "release", "agents"],
   "icon": "./assets/logo.png",
-  "documentationUrl": "https://github.com/cleverspark/pathista-agent-plugin#readme",
-  "supportUrl": "https://github.com/cleverspark/pathista-agent-plugin/issues",
+  "documentationUrl": "https://github.com/Pathista/pathista-agent-plugin#readme",
+  "supportUrl": "https://github.com/Pathista/pathista-agent-plugin/issues",
   "privacyPolicyUrl": "https://pathista.com/privacy",
   "termsOfServiceUrl": "https://pathista.com/terms"
 }

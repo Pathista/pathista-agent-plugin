@@ -16,7 +16,7 @@ two skills. A free Pathista account is enough to try it; you sign in in the brow
 **Claude Code**
 
 ```
-claude plugin marketplace add cleverspark/pathista-agent-plugin
+claude plugin marketplace add Pathista/pathista-agent-plugin
 claude plugin install pathista@pathista
 ```
 
@@ -33,7 +33,7 @@ Add the server to `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
 
 Then open **Cursor Settings → MCP**, choose **Connect** next to Pathista and sign in.
 
-**Skills only** (any agent that reads `SKILL.md`): `npx skills add cleverspark/pathista-agent-plugin`.
+**Skills only** (any agent that reads `SKILL.md`): `npx skills add Pathista/pathista-agent-plugin`.
 
 **ChatGPT and Claude in the browser:** connect `https://pathista.com/mcp` as a connector; the steps are on
 [pathista.com](https://pathista.com/?utm_source=github&utm_medium=plugin&utm_campaign=plugin-repo).

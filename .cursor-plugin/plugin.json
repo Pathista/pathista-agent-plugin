@@ -6,7 +6,7 @@
     "name": "CleverSpark"
   },
   "homepage": "https://pathista.com/?utm_source=github&utm_medium=plugin&utm_campaign=plugin-repo",
-  "repository": "https://github.com/cleverspark/pathista-agent-plugin",
+  "repository": "https://github.com/Pathista/pathista-agent-plugin",
   "license": "MIT",
   "keywords": ["workflow", "checklist", "mcp", "process", "release", "agents"],
   "logo": "assets/logo.png"
