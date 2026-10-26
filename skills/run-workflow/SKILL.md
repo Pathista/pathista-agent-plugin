@@ -13,7 +13,7 @@ the position, the checklist and the history, so nothing gets skipped and the run
 2. Start it: `startRun` with the workflow id and a short `title` saying what this run is about (for example
    "Release 2.4.0", not the workflow's name). If it reports an open run, continue that one unless the user wants a new
    run. Give the user the run page link from the result: they can watch every step there.
-3. Keep the `runId` and pass it on every later call (Claude Code sends no chat id).
+3. Keep the `runId` and pass it on every later call (coding agents send no chat id, so the run is found by its id).
 4. On each step: do exactly what the step's text says, nothing from later steps. When the step has todos, close them
    with `completeTodo` only after the work is really done, with evidence: what you ran, checked or produced (a command
    and its result, a file path, a test summary). "Done" alone is refused, and that is the point.
