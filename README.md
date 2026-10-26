@@ -31,7 +31,9 @@ Add the server to `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
 { "mcpServers": { "Pathista": { "url": "https://pathista.com/mcp" } } }
 ```
 
-Then open **Cursor Settings → MCP**, choose **Connect** next to Pathista and sign in.
+Then open **Cursor Settings → MCP**, choose **Connect** next to Pathista and sign in. The plugin is also listed on
+[cursor.directory](https://cursor.directory/plugins/pathista). Cursor asks you to approve each Pathista tool call in the
+agent chat before it runs: a run takes several calls per step, so expect a few approvals.
 
 **Skills only** (any agent that reads `SKILL.md`): `npx skills add Pathista/pathista-agent-plugin`.
 
