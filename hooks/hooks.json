@@ -1,0 +1,8 @@
+{
+  "description": "Done gate: refuses to end a turn until the project's checks pass",
+  "hooks": {
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/done-gate.mjs\"", "timeout": 600 } ] }
+    ]
+  }
+}
