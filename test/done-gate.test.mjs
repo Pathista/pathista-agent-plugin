@@ -121,15 +121,9 @@ test('with Pathista, a finished run does not block', () => {
   assert.deepEqual(runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false, transcript_path: pathistaTranscript('done') }), {});
 });
 
-test('without a config, a real npm test script is the check', () => {
+test('without a config there are no project checks, even when package.json has a failing test script', () => {
   const projectDir = makeProject();
   writeFileSync(join(projectDir, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(1)"' } }));
-  assert.equal(runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false }).decision, 'block');
-});
-
-test('without a config, the default "no test specified" script is not a check', () => {
-  const projectDir = makeProject();
-  writeFileSync(join(projectDir, 'package.json'), JSON.stringify({ scripts: { test: 'echo "Error: no test specified" && exit 1' } }));
   assert.deepEqual(runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false }), {});
 });
 
@@ -145,10 +139,90 @@ test('with Pathista, a result of another tool that looks like a run is ignored',
   assert.deepEqual(runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false, transcript_path: transcriptPath }), {});
 });
 
-test('with Pathista, a run left open in an earlier turn does not block this turn', () => {
+test('with Pathista, a run left open in an earlier turn blocks this turn', () => {
   const projectDir = makeProject({ checks: [passingCheck] });
   const transcriptPath = writeTranscript([userPrompt('start'), pathistaCall('startRun', openRun), userPrompt('unrelated question')]);
+  const output = runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false, transcript_path: transcriptPath });
+  assert.equal(output.decision, 'block');
+  assert.match(output.reason, /Pathista run 31176e03-db0b-4db1-b6f3-278869bf7144 is still open/);
+});
+
+test('with Pathista, a run opened in an earlier turn and finished in a later one does not block', () => {
+  const projectDir = makeProject({ checks: [passingCheck] });
+  const transcriptPath = writeTranscript([userPrompt('start'), pathistaCall('startRun', openRun), userPrompt('go on'), pathistaCall('advance', doneRun)]);
   assert.deepEqual(runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false, transcript_path: transcriptPath }), {});
+});
+
+test('with Pathista, an aborted run does not block', () => {
+  const projectDir = makeProject({ checks: [passingCheck] });
+  const transcriptPath = writeTranscript([userPrompt('start'), pathistaCall('startRun', openRun), pathistaCall('advance', { runId: pathistaRunId, status: 'aborted' })]);
+  assert.deepEqual(runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false, transcript_path: transcriptPath }), {});
+});
+
+test('the Pathista check is on without any .done-gate.json', () => {
+  const output = runHook(makeProject(), { session_id: newSessionId(), stop_hook_active: false, transcript_path: pathistaTranscript('open') });
+  assert.equal(output.decision, 'block');
+});
+
+test('"pathista": false in .done-gate.json switches the Pathista check off, the project checks stay on', () => {
+  const projectDir = makeProject({ pathista: false, checks: [failingCheck] });
+  const output = runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false, transcript_path: pathistaTranscript('open') });
+  assert.equal(output.decision, 'block');
+  assert.doesNotMatch(output.reason, /Pathista/);
+  const passing = makeProject({ pathista: false, checks: [passingCheck] });
+  assert.deepEqual(runHook(passing, { session_id: newSessionId(), stop_hook_active: false, transcript_path: pathistaTranscript('open') }), {});
+});
+
+test('"pathista" that is not true or false is a configuration error', () => {
+  const output = runHook(makeProject({ pathista: 'no' }), { session_id: newSessionId(), stop_hook_active: false });
+  assert.equal(output.decision, 'block');
+  assert.match(output.reason, /"pathista" must be true or false/);
+});
+
+test('a .done-gate.json with a UTF-8 byte order mark is read', () => {
+  const projectDir = makeProject();
+  writeFileSync(join(projectDir, '.done-gate.json'), `\uFEFF${JSON.stringify({ checks: [failingCheck] })}`);
+  const output = runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false });
+  assert.equal(output.decision, 'block');
+  assert.match(output.reason, /3 tests failed/);
+});
+
+test('"checks": null is a configuration error, not a silent off switch', () => {
+  const projectDir = makeProject();
+  writeFileSync(join(projectDir, '.done-gate.json'), '{ "checks": null }');
+  const output = runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false });
+  assert.equal(output.decision, 'block');
+  assert.match(output.reason, /"checks" must be a list/);
+});
+
+test('a transcript file that does not exist yet is not an error: no notice, checks still decide', () => {
+  const missingTranscript = join(mkdtempSync(join(tmpdir(), 'done-gate-transcript-')), 'missing.jsonl');
+  assert.deepEqual(runHook(makeProject({ checks: [passingCheck] }), { session_id: newSessionId(), stop_hook_active: false, transcript_path: missingTranscript }), {});
+  const failing = runHook(makeProject({ checks: [failingCheck] }), { session_id: newSessionId(), stop_hook_active: false, transcript_path: missingTranscript });
+  assert.equal(failing.decision, 'block');
+  assert.doesNotMatch(failing.reason, /transcript/);
+});
+
+test('a .done-gate.json with only "pathista": false makes the hook do nothing', () => {
+  assert.deepEqual(runHook(makeProject({ pathista: false }), { session_id: newSessionId(), stop_hook_active: false, transcript_path: pathistaTranscript('open') }), {});
+});
+
+test('a broken .done-gate.json does not switch the Pathista check off', () => {
+  const output = runHook(makeProject({ pathista: false, maxRetries: 0 }), { session_id: newSessionId(), stop_hook_active: false, transcript_path: pathistaTranscript('open') });
+  assert.equal(output.decision, 'block');
+  assert.match(output.reason, /maxRetries/);
+  assert.match(output.reason, /Pathista run/);
+});
+
+test('a transcript that cannot be read does not lose the result of the checks', () => {
+  const unreadableTranscript = mkdtempSync(join(tmpdir(), 'done-gate-transcript-dir-'));
+  const failing = runHook(makeProject({ checks: [failingCheck] }), { session_id: newSessionId(), stop_hook_active: false, transcript_path: unreadableTranscript });
+  assert.equal(failing.decision, 'block');
+  assert.match(failing.reason, /3 tests failed/);
+  assert.match(failing.reason, /transcript/);
+  const passing = runHook(makeProject({ checks: [passingCheck] }), { session_id: newSessionId(), stop_hook_active: false, transcript_path: unreadableTranscript });
+  assert.equal(passing.decision, undefined);
+  assert.match(passing.systemMessage, /transcript/);
 });
 
 test('the Pathista block is bounded by the retry cap too', () => {
@@ -214,21 +288,6 @@ test('checks share one time budget, and a check that does not get its turn count
   assert.match(failures[1].why, /time budget/);
 });
 
-// Records Claude Code writes that are "user" records but not a new prompt from the user.
-const hookFeedbackRecord = { type: 'user', isMeta: true, message: { role: 'user', content: 'Stop hook feedback:\n[node hooks/done-gate.mjs]: You are not done yet' } };
-const skillTextRecord = { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: 'Base directory for this skill: ...' }] } };
-const compactSummaryRecord = { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued from a previous conversation' } };
-const subagentPromptRecord = { type: 'user', isSidechain: true, message: { role: 'user', content: 'review the code' } };
-
-for (const [name, record] of [['hook feedback', hookFeedbackRecord], ['skill text', skillTextRecord], ['compact summary', compactSummaryRecord], ['subagent prompt', subagentPromptRecord]]) {
-  test(`with Pathista, a "${name}" user record does not start a new turn`, () => {
-    const projectDir = makeProject({ checks: [passingCheck] });
-    const transcriptPath = writeTranscript([userPrompt('go'), pathistaCall('startRun', openRun), record]);
-    const output = runHook(projectDir, { session_id: newSessionId(), stop_hook_active: true, transcript_path: transcriptPath });
-    assert.equal(output.decision, 'block');
-  });
-}
-
 test('with Pathista, calls made by a subagent (sidechain) are not the parent turn\'s runs', () => {
   const projectDir = makeProject({ checks: [passingCheck] });
   const sidechain = pathistaCall('startRun', openRun).map((record) => ({ ...record, isSidechain: true }));
@@ -245,14 +304,6 @@ for (const [name, fileContent] of [['null', 'null'], ['a list', '[]'], ['a strin
     assert.match(output.reason, /\.done-gate\.json/);
   });
 }
-
-test('a package.json that is null blocks with a message', () => {
-  const projectDir = makeProject();
-  writeFileSync(join(projectDir, 'package.json'), 'null');
-  const output = runHook(projectDir, { session_id: newSessionId(), stop_hook_active: false });
-  assert.equal(output.decision, 'block');
-  assert.match(output.reason, /package\.json/);
-});
 
 test('maxRetries below 1 is a configuration error, not a silent off switch', () => {
   const output = runHook(makeProject({ checks: [failingCheck], maxRetries: 0 }), { session_id: newSessionId(), stop_hook_active: false });

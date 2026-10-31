@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Done gate: a Stop hook (Claude Code) / stop hook (Cursor) that refuses "done" until the project's checks pass.
+// Done gate: a Stop hook (Claude Code) / stop hook (Cursor) that refuses "done" until the project's checks pass and no Pathista run is left open.
 // Zero dependencies. Reads the hook input as JSON on stdin; answers on stdout. See README, "Done gate".
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -21,7 +21,8 @@ class ConfigError extends Error {}
 function readJsonObject(path) {
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync(path, 'utf8'));
+    // Editors on Windows often save a UTF-8 byte order mark, which JSON.parse refuses.
+    parsed = JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''));
   } catch (error) {
     throw new ConfigError(`${path} cannot be read as JSON (${error.message}). Fix the file; the checks did not run.`);
   }
@@ -31,31 +32,29 @@ function readJsonObject(path) {
   return parsed;
 }
 
+// Project checks come only from .done-gate.json; without it there are none. The Pathista check is on unless the file
+// says "pathista": false.
 export function loadConfig(projectDir) {
-  const defaults = { checks: [], maxRetries: DEFAULT_MAX_RETRIES, timeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS };
+  const defaults = { checks: [], pathista: true, maxRetries: DEFAULT_MAX_RETRIES, timeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS };
   const configPath = join(projectDir, '.done-gate.json');
-  if (existsSync(configPath)) {
-    const config = readJsonObject(configPath);
-    const checks = config.checks ?? [];
-    if (!Array.isArray(checks) || checks.some((check) => typeof check !== 'string' || !check.trim())) {
-      throw new ConfigError(`${configPath}: "checks" must be a list of command strings. Fix the file; the checks did not run.`);
-    }
-    if (config.maxRetries !== undefined && !(Number.isInteger(config.maxRetries) && config.maxRetries >= 1)) {
-      throw new ConfigError(`${configPath}: "maxRetries" must be a whole number of at least 1. Fix the file; the checks did not run.`);
-    }
-    return {
-      checks,
-      maxRetries: config.maxRetries ?? defaults.maxRetries,
-      timeoutSeconds: config.timeoutSeconds > 0 ? config.timeoutSeconds : defaults.timeoutSeconds,
-    };
+  if (!existsSync(configPath)) return defaults;
+  const config = readJsonObject(configPath);
+  const checks = config.checks === undefined ? [] : config.checks;
+  if (!Array.isArray(checks) || checks.some((check) => typeof check !== 'string' || !check.trim())) {
+    throw new ConfigError(`${configPath}: "checks" must be a list of command strings. Fix the file; the checks did not run.`);
   }
-  // No config: use the project's own test script, and nothing else. Never guess a command.
-  const packagePath = join(projectDir, 'package.json');
-  if (existsSync(packagePath)) {
-    const testScript = readJsonObject(packagePath).scripts?.test;
-    if (typeof testScript === 'string' && !/no test specified/.test(testScript)) return { ...defaults, checks: ['npm test'] };
+  if (config.pathista !== undefined && typeof config.pathista !== 'boolean') {
+    throw new ConfigError(`${configPath}: "pathista" must be true or false. Fix the file; the checks did not run.`);
   }
-  return defaults;
+  if (config.maxRetries !== undefined && !(Number.isInteger(config.maxRetries) && config.maxRetries >= 1)) {
+    throw new ConfigError(`${configPath}: "maxRetries" must be a whole number of at least 1. Fix the file; the checks did not run.`);
+  }
+  return {
+    checks,
+    pathista: config.pathista ?? defaults.pathista,
+    maxRetries: config.maxRetries ?? defaults.maxRetries,
+    timeoutSeconds: config.timeoutSeconds > 0 ? config.timeoutSeconds : defaults.timeoutSeconds,
+  };
 }
 
 function outputTail(result) {
@@ -103,26 +102,18 @@ function parseRunState(resultText) {
   }
 }
 
-// Pathista runs the agent touched in the current turn (since the user's last prompt), from the session transcript
-// (JSONL). A tool result does not name its tool, so results are matched to Pathista calls by tool_use_id. A run
-// whose last status is "open" is returned. It cannot see runs from earlier turns or other sessions. Records that are
-// "user" records but no prompt (hook feedback, skill text, compaction summary: isMeta/isCompactSummary) do not end
-// the turn, and subagent records (isSidechain) are skipped.
+// Pathista runs still open anywhere in the session transcript (JSONL), not only in the current turn. A tool result
+// does not name its tool, so results are matched to Pathista calls by tool_use_id. The last result for a run decides:
+// a run seen done or aborted later is not returned. It cannot see runs from other sessions. Subagent records
+// (isSidechain) are skipped.
 export function findOpenPathistaRuns(transcriptText) {
-  let pathistaCallIds = new Set();
-  let runs = new Map();
+  const pathistaCallIds = new Set();
+  const runs = new Map();
   for (const line of transcriptText.split('\n')) {
     let record;
     try { record = JSON.parse(line); } catch { continue; }
     if (record?.isSidechain) continue;
     const content = record?.message?.content;
-    const startsNewTurn = record?.type === 'user' && !record.isMeta && !record.isCompactSummary
-      && !(Array.isArray(content) && content.some((part) => part?.type === 'tool_result'));
-    if (startsNewTurn) {
-      pathistaCallIds = new Set();
-      runs = new Map();
-      continue;
-    }
     if (!Array.isArray(content)) continue;
     for (const part of content) {
       if (part?.type === 'tool_use' && /pathista/i.test(part.name ?? '')) pathistaCallIds.add(part.id);
@@ -165,7 +156,7 @@ export function decide(input, env = process.env) {
     config = loadConfig(projectDir);
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
-    config = { checks: [], maxRetries: DEFAULT_MAX_RETRIES, timeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS };
+    config = { checks: [], pathista: true, maxRetries: DEFAULT_MAX_RETRIES, timeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS };
     problems.push(error.message);
   }
 
@@ -178,21 +169,29 @@ export function decide(input, env = process.env) {
   for (const failure of runChecks(config.checks, projectDir, config.timeoutSeconds)) {
     problems.push(`Check failed (${failure.why}): ${failure.command}\n${failure.output}`.trimEnd());
   }
-  const transcript = input.transcript_path && existsSync(input.transcript_path) ? readFileSync(input.transcript_path, 'utf8') : '';
-  for (const run of findOpenPathistaRuns(transcript)) {
-    problems.push(`Pathista run ${run.runId} is still open${run.step ? ` at step "${run.step}"` : ''}. Finish the step (currentStep, then advance) or tell the user why you stop.`);
+  // A transcript we cannot read must not hide the result of the checks: say so and go on.
+  const warnings = [];
+  if (config.pathista && input.transcript_path) {
+    try {
+      for (const run of findOpenPathistaRuns(readFileSync(input.transcript_path, 'utf8'))) {
+        problems.push(`Pathista run ${run.runId} is still open${run.step ? ` at step "${run.step}"` : ''}. Finish the step (currentStep, then advance) or tell the user why you stop.`);
+      }
+    } catch (error) {
+      // A transcript that is not there (yet) is normal; any other read failure is worth saying.
+      if (error.code !== 'ENOENT') warnings.push(`Done gate could not read the session transcript (${error.message}); open Pathista runs were not checked.`);
+    }
   }
 
   if (problems.length === 0) {
     if (!isCursor) writeBlockCount(sessionId, 0);
-    return { block: false };
+    return warnings.length ? { block: false, notice: warnings.join('\n') } : { block: false };
   }
   if (previousBlocks >= config.maxRetries) {
     if (!isCursor) writeBlockCount(sessionId, 0);
-    return { block: false, notice: `Done gate gave up after ${config.maxRetries} retries; still failing:\n${problems.join('\n\n')}` };
+    return { block: false, notice: `Done gate gave up after ${config.maxRetries} retries; still failing:\n${[...problems, ...warnings].join('\n\n')}` };
   }
   if (!isCursor) writeBlockCount(sessionId, previousBlocks + 1);
-  return { block: true, reason: `You are not done yet (attempt ${previousBlocks + 1} of ${config.maxRetries}). Fix this, then finish again:\n\n${problems.join('\n\n')}` };
+  return { block: true, reason: `You are not done yet (attempt ${previousBlocks + 1} of ${config.maxRetries}). Fix this, then finish again:\n\n${[...problems, ...warnings].join('\n\n')}` };
 }
 
 export function formatOutput(input, outcome) {
