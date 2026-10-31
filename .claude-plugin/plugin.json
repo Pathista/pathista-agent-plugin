@@ -1,7 +1,7 @@
 {
   "name": "pathista",
   "displayName": "Pathista",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Run your saved workflows step by step: the agent gets one step at a time and closes each checklist item with evidence.",
   "author": {
     "name": "CleverSpark",
