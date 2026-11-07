@@ -1,6 +1,19 @@
+<div align="center">
+
 # Pathista for Claude Code and Cursor
 
-Your agent says "done" and skipped step 4. Pathista fixes that by giving it **one step at a time**.
+**Your agent says "done" and skipped step 4. Pathista gives it one step at a time.**
+
+<a href="https://pathista.com/templates?utm_source=github&utm_medium=plugin&utm_campaign=plugin-readme"><img alt="See the workflows" src="https://img.shields.io/badge/-%E2%96%B6%20See%20the%20workflows-ff6b00?style=for-the-badge"></a> <a href="#license"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2EA44F?style=for-the-badge"></a>
+
+<img src="assets/done-gate-demo.gif" width="300" alt="A Pathista step refuses to close on &quot;done&quot; or &quot;OK&quot;, closes on the test output, and shows it on the run page">
+
+</div>
+
+**New**
+
+- 31 Oct 2026, version 1.1.0: the done gate, a Stop hook that refuses "done" until your project's checks pass and no Pathista run is left open.
+- 26 Oct 2026: listed on [cursor.directory](https://cursor.directory/plugins/pathista).
 
 You save a process once, as a workflow: a release checklist, a QA pass, a code review routine. When you start it, the
 agent only sees the current step. Each checklist item closes only with evidence (the command it ran, the test output, the
