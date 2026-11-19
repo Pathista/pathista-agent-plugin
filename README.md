@@ -6,13 +6,11 @@
 
 <a href="https://pathista.com/templates?utm_source=github&utm_medium=plugin&utm_campaign=plugin-readme"><img alt="See the workflows" src="https://img.shields.io/badge/-%E2%96%B6%20See%20the%20workflows-ff6b00?style=for-the-badge"></a> <a href="#license"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2EA44F?style=for-the-badge"></a>
 
-<img src="assets/done-gate-demo.gif" width="300" alt="A Pathista step refuses to close on &quot;done&quot; or &quot;OK&quot;, closes on the test output, and shows it on the run page">
-
 </div>
 
 **New**
 
-- 31 Oct 2026, version 1.1.0: the done gate, a Stop hook that refuses "done" until your project's checks pass and no Pathista run is left open.
+- 19 Nov 2026, version 1.2.0: the plugin is now two skills and the Pathista MCP server. The done gate (the Stop hook of version 1.1.0) is removed.
 - 26 Oct 2026: listed on [cursor.directory](https://cursor.directory/plugins/pathista).
 
 You save a process once, as a workflow: a release checklist, a QA pass, a code review routine. When you start it, the
@@ -60,74 +58,7 @@ agent chat before it runs: a run takes several calls per step, so expect a few a
 | `.mcp.json`, `mcp.json` | The Pathista MCP server for Claude Code and Cursor (HTTP, OAuth sign-in) |
 | `skills/run-workflow` | Runs a saved workflow step by step: start, do the step, close todos with evidence, advance, finish |
 | `skills/make-workflow` | Turns a process you describe into a workflow: draft, check with `validateWorkflow`, save |
-| `hooks/` | The done gate: a Stop hook that blocks "done" until your checks pass and no Pathista run is left open |
 | `.claude-plugin/`, `.cursor-plugin/` | Plugin manifests and the Claude Code marketplace file |
-
-## Done gate: no "done" until the checks pass
-
-A Stop hook that has two checks, and each works on its own:
-
-1. **Your project's checks**, which run only when you ask for them with a `.done-gate.json`. If one fails, the agent is
-   sent back with the failing output and has to fix it before it can finish.
-2. **Open Pathista runs**, which is **on by default**, with or without a `.done-gate.json`. If a run started or used
-   anywhere in the session is still open, the agent cannot finish.
-
-Zero dependencies; it needs Node 18 or newer on your PATH.
-
-**Turn on project checks.** Put a `.done-gate.json` in your project root with the commands to run:
-
-```json
-{ "checks": ["npm test", "npm run lint"], "maxRetries": 3, "timeoutSeconds": 300 }
-```
-
-Without that file the hook runs no project command at all: it never guesses `npm test` or anything else. The checks run
-one after another through your shell (`cmd.exe` on Windows), each for at most `timeoutSeconds`, and all together for at
-most 9 minutes (the hook's own timeout is 10). A check that runs too long is killed, but on Windows only its shell: a
-process the check started may keep running. The file may start with a UTF-8 byte order mark. A broken file (not JSON,
-`"checks"` that is not a list of command strings, `"checks": null`, `"pathista"` that is not true or false, or
-`maxRetries` below 1) blocks with a message that names the file; it does not switch the gate off.
-
-It runs your checks every time the agent ends a turn, also for a short question that changed nothing, so keep them fast.
-
-**Turn off the Pathista check.** Add `"pathista": false` to `.done-gate.json`. Your project checks are not affected. A
-file with only `{ "pathista": false }` makes the hook do nothing. In a broken file the switch is ignored: the Pathista
-check stays on, next to the message about the file.
-
-**Claude Code.** Installing the plugin (above) turns it on. Without the plugin, copy `hooks/done-gate.mjs` into your
-project and add to `.claude/settings.json`:
-
-```json
-{ "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/hooks/done-gate.mjs\"", "timeout": 600 } ] } ] } }
-```
-
-**Cursor.** Copy `hooks/done-gate.mjs` to `.cursor/hooks/` and `hooks/cursor-hooks.json` to `.cursor/hooks.json`. Cursor
-cannot refuse a stop: the hook sends the failure as the next message instead. Cursor's own `loop_limit` (5 in that file)
-caps the retries, so a larger `maxRetries` has no effect there. When the cap is reached the turn just ends; Cursor shows
-no notice. Whether the hook also finds Pathista runs on Cursor depends on the format of Cursor's transcript file, which
-is not tested here; the checks work either way.
-
-**With Pathista.** The hook reads the Claude Code session transcript and matches results to calls of tools whose name
-contains `pathista` (such as `mcp__pathista__advance`; a server you registered under another name is not gated). Every
-run it finds there counts, from the whole session and not only the current turn, as long as the last result it got for
-that run says `"status":"open"`. A run seen finished or aborted later in the transcript is not counted. The hook then
-refuses to finish and names each open run and its step. A run you parked on purpose (for example while it waits for
-your answer) is blocked like any other, up to `maxRetries` times, before the hook lets the turn end; the same happens
-again at the end of every later turn until you close the run or turn the check off. If the transcript
-cannot be read (a missing file is not an error), the hook says so (Claude Code only: Cursor shows no notice), still reports the result of your checks, and does not block because of Pathista.
-
-**What it does not do.**
-- It does not read what the agent says. A turn with no failing check and no open run passes, even if the agent claims
-  something false.
-- It is only as good as your checks: no `.done-gate.json`, no project checks.
-- It stops after `maxRetries` blocks in a row (default 3) and lets the turn end with a notice, so it cannot loop forever.
-  A stuck agent is the user's call, not the hook's.
-- The Pathista check is a heuristic on the transcript, not a query to the server: it does not see a run that was
-  closed or changed outside the chat, and it does not see runs of other sessions. Hooks are not allowed in a public
-  OpenAI plugin, so this is for Claude Code and Cursor only.
-- Stop hooks do not run when you interrupt the agent.
-
-Tests: `node --test test/done-gate.test.mjs`. More on making agents prove their work:
-[pathista.com](https://pathista.com/?utm_source=github&utm_medium=plugin&utm_campaign=done-gate).
 
 ## Try it
 
